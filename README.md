@@ -10,7 +10,7 @@ A personal gym log that replaces a messy phone note. It remembers what you did l
 
 **Today**
 - The day type that's due, with each exercise's weights for today, e.g. `Incline 15kg × 10, 12.5kg × 15`.
-- Normal, lighter (comeback after a break, ~15% off) or deload (~40% off; doesn't move your weights).
+- Normal or light (sick, deload, comeback): pick weight % and reps % of your normal targets. Light sessions stay out of records and charts and never move your weights.
 - Last session at a glance and a couple of specific tips.
 
 **During a session**
@@ -31,7 +31,7 @@ A personal gym log that replaces a messy phone note. It remembers what you did l
 - Training calendar for the last six months.
 - Sets per muscle over 4 weeks (gaps stand out).
 - Per-exercise trend (climbing / steady / slipping) with a chart and full history.
-- Tips: stalled lifts, gains, push/pull balance, deload timing.
+- Tips: stalled lifts, gains, push/pull balance, when to go light.
 
 Phone first (add it to the home screen), responsive up to desktop.
 

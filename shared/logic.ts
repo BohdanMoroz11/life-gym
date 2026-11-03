@@ -1,4 +1,4 @@
-import type { Color, DB, Entry, Exercise, Group, Kind, Mode, Program, Session, SetLog, Target } from "./types.ts";
+import type { Color, DB, Entry, Exercise, Group, Kind, Light, Mode, Program, Session, SetLog, Target } from "./types.ts";
 import { LIBRARY, STARTER_PROGRAMS } from "./library.ts";
 
 export const GROUP_LABEL: Record<Group, string> = {
@@ -13,8 +13,8 @@ export const GROUP_LABEL: Record<Group, string> = {
   other: "Other",
 };
 
-export const MODE_FACTOR: Record<Mode, number> = { normal: 1, deload: 0.6, comeback: 0.85 };
-/** A break this long offers comeback mode. */
+export const LIGHT_DEFAULT: Light = { w: 80, r: 100 };
+/** A break this long suggests a light session. */
 export const COMEBACK_DAYS = 14;
 
 const DAY_MS = 86_400_000;
@@ -106,6 +106,10 @@ export const done = (db: DB) => db.sessions.filter((s) => s.end).sort((a, b) => 
  *  They seed targets but never count toward records, streaks, balance or tips. */
 export const logged = (db: DB) => done(db).filter((s) => !s.approx);
 export const active = (db: DB) => db.sessions.find((s) => !s.end);
+export const isLight = (s: Pick<Session, "mode">) => s.mode === "light";
+/** What counts in records, trends, charts and muscle balance: logged, normal sessions. Light ones still count as showing up (streak, calendar). */
+export const baseline = (db: DB) => logged(db).filter((s) => !isLight(s));
+export const lightLabel = (l: Light = LIGHT_DEFAULT) => `${l.w}% weight, ${l.r}% reps`;
 
 export function roundTo(w: number, inc: number): number {
   if (!inc) return Math.max(0, Math.round(w));
@@ -187,23 +191,39 @@ export function nextOptions(entry: Entry, ex: Exercise): NextOption[] {
   return out;
 }
 
-/** What the last real (non-deload) time said to do now. */
+/** The last normal session with this exercise, before the given one. Light sessions never set targets. */
+export function lastNormal(db: DB, exId: string, session?: Session): HistoryItem | undefined {
+  return history(db, exId, session?.id).find((x) => !isLight(x.session) && (!session || x.session.date < session.date));
+}
+
+/** A light session newer than the last normal one: shown as info only. */
+export function lastLight(db: DB, exId: string, session?: Session): HistoryItem | undefined {
+  const h = history(db, exId, session?.id).find((x) => !session || x.session.date < session.date);
+  return h && isLight(h.session) ? h : undefined;
+}
+
+/** What the last normal session said to do now. */
 export function targetsFor(db: DB, ex: Exercise, skipSession?: string): Target[] {
-  const h = history(db, ex.id, skipSession).find((x) => x.session.mode !== "deload");
+  const h = history(db, ex.id, skipSession).find((x) => !isLight(x.session));
   if (!h) return [];
   return nextOf(h.entry, ex);
 }
 
 /** The note left last time for this exercise, if the last time had one. It's for one session only. */
 export function noteFromLast(db: DB, exId: string, session: Session): HistoryItem | undefined {
-  const h = history(db, exId, session.id).find((x) => x.session.date < session.date);
-  return h?.entry.note ? h : undefined;
+  // A light session in between doesn't use up the note: it waits for the next normal one.
+  for (const h of history(db, exId, session.id).filter((x) => x.session.date < session.date)) {
+    if (h.entry.note) return h;
+    if (!isLight(h.session)) return undefined;
+  }
+  return undefined;
 }
 
-export function applyMode(ts: Target[], mode: Mode, ex: Exercise): Target[] {
-  if (mode === "normal") return ts;
-  const f = MODE_FACTOR[mode];
-  return ts.map((t) => ({ ...t, w: roundTo(t.w * f, stepOf(ex)) }));
+/** Light session targets: weight and reps scaled separately, weight rounded to what the equipment can do. */
+export function applyMode(ts: Target[], s: Pick<Session, "mode" | "light">, ex: Exercise): Target[] {
+  if (!isLight(s)) return ts;
+  const l = s.light ?? LIGHT_DEFAULT;
+  return ts.map((t) => ({ w: l.w === 100 ? t.w : roundTo((t.w * l.w) / 100, stepOf(ex)), r: Math.max(1, Math.round((t.r * l.r) / 100)) }));
 }
 
 /** The program least recently trained (never trained first). */
@@ -216,16 +236,24 @@ export function suggestDay(db: DB): string | null {
 export const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 export const slug = (name: string) => name.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") + "-" + Date.now().toString(36).slice(-4);
 
-export function startSession(db: DB, day: string | null, mode: Mode): Session {
+export function startSession(db: DB, day: string | null, mode: Mode, light?: Light): Session {
   const m = exMap(db);
   const ids = (programOf(db, day)?.items ?? []).filter((id) => m.has(id));
-  return { id: newId(), day, date: new Date().toISOString(), mode, planned: ids, entries: ids.map((id) => newEntry(db, m.get(id)!, mode)) };
+  const s: Session = { id: newId(), day, date: new Date().toISOString(), mode, ...(mode === "light" && { light: light ?? LIGHT_DEFAULT }), planned: ids, entries: [] };
+  return { ...s, entries: ids.map((id) => newEntry(db, m.get(id)!, s)) };
 }
 
-export function newEntry(db: DB, ex: Exercise, mode: Mode): Entry {
+export function newEntry(db: DB, ex: Exercise, s: Pick<Session, "mode" | "light">): Entry {
   let plan = targetsFor(db, ex);
   if (!plan.length) plan = [0, 1].map(() => ({ w: isStack(ex) ? ex.inc * 2 : 10, r: ex.aim }));
-  return { ex: ex.id, sets: [], plan: applyMode(plan, mode, ex) };
+  return { ex: ex.id, sets: [], plan: applyMode(plan, s, ex) };
+}
+
+/** The light % changed mid-session: what isn't started yet gets re-scaled. */
+export function relight(db: DB, s: Session, light: Light): Session {
+  const m = exMap(db);
+  const next = { ...s, light };
+  return { ...next, entries: s.entries.map((e) => (started(e) || !m.has(e.ex) ? e : { ...e, plan: newEntry(db, m.get(e.ex)!, next).plan })) };
 }
 
 export const started = (e: Entry) => e.sets.length > 0;
@@ -244,7 +272,7 @@ export function followProgram(db: DB, s: Session, program: Program): Session {
   const m = exMap(db);
   const begun = s.entries.filter((e) => started(e) || e.skip);
   const waiting = new Map(s.entries.filter((e) => !begun.includes(e)).map((e) => [e.ex, e]));
-  const fromProgram = program.items.filter((id) => m.has(id) && !begun.some((e) => e.ex === id)).map((id) => waiting.get(id) ?? newEntry(db, m.get(id)!, s.mode));
+  const fromProgram = program.items.filter((id) => m.has(id) && !begun.some((e) => e.ex === id)).map((id) => waiting.get(id) ?? newEntry(db, m.get(id)!, s));
   // Exercises added by hand today (never in the plan) stay too.
   const added = [...waiting.values()].filter((e) => !program.items.includes(e.ex) && !s.planned?.includes(e.ex));
   return { ...s, planned: program.items.filter((id) => m.has(id)), entries: [...begun, ...fromProgram, ...added] };
@@ -257,7 +285,15 @@ export const emptyDB = (): DB => ({ version: 2, exercises: structuredClone(LIBRA
 
 /** v1 had rep ranges, a fixed back/chest/legs day list and "machine" for every machine. */
 export function migrate(raw: any): DB {
-  if (raw.version === 2) return raw as DB;
+  const db = raw.version === 2 ? (raw as DB) : migrateV1(raw);
+  // The old lighter (comeback, ~15% off) and deload (~40% off) modes became light sessions.
+  for (const s of db.sessions as any[]) {
+    if (s.mode === "comeback" || s.mode === "deload") Object.assign(s, { mode: "light", light: { w: s.mode === "deload" ? 60 : 90, r: 100 } });
+  }
+  return db;
+}
+
+function migrateV1(raw: any): DB {
   const toT = (ts?: any[]) => ts?.map((t) => ("r" in t ? t : { w: t.w, r: t.hi }));
   const exercises: Exercise[] = raw.exercises
     .filter((e: { day?: string; group: string }) => e.day !== "legs")
@@ -283,7 +319,8 @@ export const topSet = (sets: SetLog[]) => sets.reduce<SetLog | undefined>((t, s)
 
 /** Sets in this entry that beat everything before it: heavier, or more reps at the heaviest weight. */
 export function prsIn(db: DB, session: Session, entry: Entry): SetLog | undefined {
-  const before = history(db, entry.ex).filter((h) => !h.session.approx && h.session.date < session.date && h.session.id !== session.id);
+  if (isLight(session)) return undefined;
+  const before = history(db, entry.ex).filter((h) => !h.session.approx && !isLight(h.session) && h.session.date < session.date && h.session.id !== session.id);
   if (!before.length) return undefined;
   const best = topSet(before.flatMap((h) => h.entry.sets))!;
   const mine = topSet(entry.sets);
@@ -298,8 +335,10 @@ export interface Point {
   approx?: boolean;
 }
 
+/** Normal sessions only: light ones would read as drops. */
 export function series(db: DB, exId: string): Point[] {
   return history(db, exId)
+    .filter(({ session }) => !isLight(session))
     .map(({ session, entry }) => {
       const top = topSet(entry.sets)!;
       return { date: session.date, top, e1rm: Math.max(...entry.sets.map(e1rm)), mode: session.mode, approx: session.approx };
@@ -336,7 +375,7 @@ export function stalledFor(points: Point[]): number {
 export function setsByGroup(db: DB, days = 28): Record<Group, number> {
   const out = Object.fromEntries(Object.keys(GROUP_LABEL).map((g) => [g, 0])) as Record<Group, number>;
   const m = exMap(db);
-  for (const s of logged(db)) {
+  for (const s of baseline(db)) {
     if (daysBetween(s.date) > days) continue;
     for (const e of s.entries) {
       const ex = m.get(e.ex);
@@ -382,7 +421,7 @@ export function tips(db: DB): Tip[] {
   if (last) {
     const gap = daysBetween(last.date);
     if (gap >= COMEBACK_DAYS)
-      out.push({ id: "gap", tone: "info", text: `${gap} days since the last session. Showing up matters more than the weight today, so comeback mode starts about 15% lighter.` });
+      out.push({ id: "gap", tone: "info", text: `${gap} days since the last session. Showing up matters more than the weight today, so a light session (say 80% weight) is a good way back in.` });
   }
 
   for (const ex of db.exercises) {
@@ -409,7 +448,7 @@ export function tips(db: DB): Tip[] {
     else if (pull > push * 1.6) out.push({ id: "bal", tone: "nudge", text: `${pull} pulling sets vs ${push} pushing in 4 weeks. More pushing evens it out.` });
   }
 
-  // Six straight weeks of 2+ sessions without a deload.
+  // Six straight weeks of 2+ sessions without a light one.
   const perWeek = new Map<number, Session[]>();
   for (const s of sessions) {
     const k = weekStart(new Date(s.date)).getTime();
@@ -419,12 +458,12 @@ export function tips(db: DB): Tip[] {
   const w = weekStart(new Date());
   for (let i = 0; i < 12; i++) {
     const ss = perWeek.get(w.getTime()) ?? [];
-    if (ss.some((s) => s.mode === "deload")) break;
+    if (ss.some(isLight)) break;
     if (ss.length >= 2) solid++;
     else if (i > 0) break;
     w.setDate(w.getDate() - 7);
   }
-  if (solid >= 6) out.push({ id: "deload", tone: "info", text: `${solid} solid weeks in a row. A lighter week now tends to make the next block go better. Start a session in deload mode.` });
+  if (solid >= 6) out.push({ id: "deload", tone: "info", text: `${solid} solid weeks in a row. A lighter week now tends to make the next block go better. Make the next one a light session.` });
 
   const order = { nudge: 0, info: 1, good: 2 };
   return out.sort((a, b) => order[a.tone] - order[b.tone]);

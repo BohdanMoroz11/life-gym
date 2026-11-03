@@ -178,4 +178,10 @@ export const dayColor = (db: DB, id: string | null | undefined) => {
   return p ? COLOR_VAR[p.color] : "var(--color-faint)";
 };
 
+/** The colored day marker. Light sessions get an outline instead of a fill, everywhere. */
+export const markStyle = (db: DB, s: Pick<Session, "day" | "mode">) => {
+  const c = dayColor(db, s.day);
+  return s.mode === "light" ? { boxShadow: `inset 0 0 0 2px ${c}` } : { background: c };
+};
+
 export const cx = (...c: (string | false | null | undefined)[]) => c.filter(Boolean).join(" ");

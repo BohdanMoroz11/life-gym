@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import type { DB, Mode, Session } from "../../../shared/types.ts";
-import { active, agoLabel, applyMode, COMEBACK_DAYS, daysBetween, done, exMap, fmtSets, fmtTargets, followProgram, programOf, sessionLabel, startSession, suggestDay, targetsFor, tips } from "../../../shared/logic.ts";
-import { cx, dayColor, go, useDeleteSession, useSaveSession } from "../lib.ts";
+import type { DB, Light, Mode, Session } from "../../../shared/types.ts";
+import { active, agoLabel, applyMode, COMEBACK_DAYS, daysBetween, done, exMap, fmtSets, fmtTargets, followProgram, isLight, LIGHT_DEFAULT, programOf, relight, sessionLabel, startSession, suggestDay, targetsFor, tips } from "../../../shared/logic.ts";
+import { cx, dayColor, go, markStyle, useDeleteSession, useSaveSession } from "../lib.ts";
 import { FinishSheet, SessionBar, SessionEditor } from "./Session.tsx";
 import { ProgramSheet } from "./Program.tsx";
-import { pill, Segmented } from "./ui.tsx";
+import { LightPicker, pill, Segmented } from "./ui.tsx";
 import { TipList } from "./Progress.tsx";
 
 const STALE_MS = 4 * 3_600_000;
@@ -41,6 +41,14 @@ function Live({ db, live }: { db: DB; live: Session }) {
       <SessionBar db={db} session={live} editing={editing} onEdit={() => setEditing(!editing)} onFinish={() => setFinishing(true)} />
       {editing && (
         <div className="mt-3 space-y-2 rounded-2xl border-2 border-dashed border-rule p-3">
+          {isLight(live) && (
+            <div className="space-y-2 pb-2">
+              <p className="text-sm text-mute">Light session. Changing this re-scales the exercises you haven't started.</p>
+              <div className="rounded-xl bg-mat p-2">
+                <LightPicker value={live.light ?? LIGHT_DEFAULT} onChange={(l) => save(relight(db, live, l))} />
+              </div>
+            </div>
+          )}
           <p className="text-sm text-mute">Open an exercise to move it, remove it or change its setup.</p>
           {program && (
             <button onClick={() => setProgramOpen(true)} className={cx(pill, "h-12 w-full")}>
@@ -75,7 +83,9 @@ function Start({ db, onStart }: { db: DB; onStart: (s: Session) => void }) {
   const [day, setDay] = useState<string | null>(() => suggestDay(db));
   const last = done(db)[0];
   const gap = last ? daysBetween(last.date) : 0;
-  const [mode, setMode] = useState<Mode>(gap >= COMEBACK_DAYS ? "comeback" : "normal");
+  const [mode, setMode] = useState<Mode>(gap >= COMEBACK_DAYS ? "light" : "normal");
+  // Starts from the last light session's percentages.
+  const [light, setLight] = useState<Light>(() => done(db).find(isLight)?.light ?? LIGHT_DEFAULT);
   const m = exMap(db);
   const t = useMemo(() => tips(db), [db]);
 
@@ -100,7 +110,7 @@ function Start({ db, onStart }: { db: DB; onStart: (s: Session) => void }) {
           <>
             <ol className="mt-6 divide-y divide-rule/60 rounded-2xl bg-mat px-4">
               {plan.map((ex, i) => {
-                const ts = applyMode(targetsFor(db, ex), mode, ex);
+                const ts = applyMode(targetsFor(db, ex), { mode, light }, ex);
                 return (
                   <li key={ex.id} className="flex items-baseline gap-3 py-3">
                     <span className="num w-5 shrink-0 text-lg text-faint">{i + 1}</span>
@@ -123,17 +133,21 @@ function Start({ db, onStart }: { db: DB; onStart: (s: Session) => void }) {
             onChange={setMode}
             options={[
               { value: "normal", label: "Normal" },
-              { value: "comeback", label: "Lighter" },
-              { value: "deload", label: "Deload" },
+              { value: "light", label: "Light" },
             ]}
           />
-          <p className="text-sm text-mute">
-            {mode === "comeback" ? "About 15% off every weight." : mode === "deload" ? "About 40% off. Doesn't change next time's weights." : gap >= COMEBACK_DAYS ? `${gap} days off. Lighter is an option.` : ""}
-          </p>
+          {mode === "light" ? (
+            <div className="space-y-3 rounded-2xl bg-mat p-3">
+              <p className="text-sm text-mute">For sick days, deloads and comebacks. Your normal targets, scaled. Skipping is fine. It stays out of records and charts and doesn't change next time.</p>
+              <LightPicker value={light} onChange={setLight} />
+            </div>
+          ) : (
+            gap >= COMEBACK_DAYS && <p className="text-sm text-mute">{gap} days off. A light session is an option.</p>
+          )}
         </div>
 
-        <button onClick={() => onStart(startSession(db, day, mode))} className="mt-4 w-full rounded-2xl py-4 text-xl font-semibold text-floor sm:w-auto sm:px-10" style={{ background: color }}>
-          Start {label.toLowerCase()}
+        <button onClick={() => onStart(startSession(db, day, mode, light))} className="mt-4 w-full rounded-2xl py-4 text-xl font-semibold text-floor sm:w-auto sm:px-10" style={{ background: color }}>
+          Start {mode === "light" ? "light " : ""}{label.toLowerCase()}
         </button>
 
         <div className="mt-4 flex flex-wrap gap-2">
@@ -155,8 +169,9 @@ function Start({ db, onStart }: { db: DB; onStart: (s: Session) => void }) {
             <h2 className="mb-2 text-sm text-mute">Last session</h2>
             <button onClick={() => go(`/s/${last.id}`)} className="w-full rounded-2xl bg-mat p-4 text-left hover:bg-bench">
               <div className="flex items-center gap-2">
-                <span className="h-4 w-1.5 rounded-full" style={{ background: dayColor(db, last.day) }} />
+                <span className="h-4 w-1.5 rounded-full" style={markStyle(db, last)} />
                 <span className="font-semibold">{sessionLabel(db, last)}</span>
+                {isLight(last) && <span className="text-sm text-mute">light</span>}
                 <span className="text-sm text-mute">{last.approx ? "from old notes" : agoLabel(last.date)}</span>
               </div>
               <div className="mt-2 space-y-0.5 text-sm">

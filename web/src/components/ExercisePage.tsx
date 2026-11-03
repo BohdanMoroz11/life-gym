@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { DB, Exercise } from "../../../shared/types.ts";
-import { equipLabel, fmtDate, fmtSets, fmtTargets, fmtW, history, nextOf, programsWith, series, type Point } from "../../../shared/logic.ts";
-import { COLOR_VAR, go, useSaveExercise } from "../lib.ts";
+import { equipLabel, fmtDate, fmtSets, fmtTargets, fmtW, history, isLight, programsWith, series, targetsFor, type Point } from "../../../shared/logic.ts";
+import { COLOR_VAR, cx, go, useSaveExercise } from "../lib.ts";
 import { ExerciseForm } from "./Exercises.tsx";
 import { pill, Toggle } from "./ui.tsx";
 
@@ -23,9 +23,9 @@ export function ExercisePage({ db, id }: { db: DB; id: string }) {
         </div>
       </div>
       {ex.note && <p className="mt-4 rounded-xl border-l-4 border-chalk bg-mat px-3.5 py-3 text-[17px] whitespace-pre-line">{ex.note}</p>}
-      {h[0] && (
+      {targetsFor(db, ex).length > 0 && (
         <p className="mt-4 text-mute">
-          Next time <span className="num text-xl text-chalk">{fmtTargets(nextOf(h[0].entry, ex))}</span>
+          Next time <span className="num text-xl text-chalk">{fmtTargets(targetsFor(db, ex))}</span>
         </p>
       )}
 
@@ -33,7 +33,7 @@ export function ExercisePage({ db, id }: { db: DB; id: string }) {
         <div className="min-w-0 space-y-6">
           <section>
             <h2 className="mb-1 font-semibold">Heaviest set each session, kg</h2>
-            <p className="mb-3 text-sm text-mute">Hollow dots come from the old notes and may be off.</p>
+            <p className="mb-3 text-sm text-mute">Normal sessions only. Hollow dots come from the old notes and may be off.</p>
             <Chart points={p} />
           </section>
           <section>
@@ -42,7 +42,8 @@ export function ExercisePage({ db, id }: { db: DB; id: string }) {
               {h.map(({ session, entry }) => (
                 <button key={session.id} onClick={() => go(`/s/${session.id}`)} className="flex w-full items-baseline gap-3 px-4 py-2.5 text-left hover:bg-bench">
                   <span className="w-24 shrink-0 text-sm text-mute">{session.approx ? "old notes" : fmtDate(session.date)}</span>
-                  <span className="num text-lg whitespace-nowrap">{fmtSets(entry.sets)}</span>
+                  <span className={cx("num text-lg whitespace-nowrap", isLight(session) && "text-mute")}>{fmtSets(entry.sets)}</span>
+                  {isLight(session) && <span className="shrink-0 text-sm text-faint">light</span>}
                   {entry.note && <span className="truncate text-sm text-faint">{entry.note}</span>}
                 </button>
               ))}
@@ -115,7 +116,6 @@ function Chart({ points }: { points: Point[] }) {
         <span className="num text-xl">
           {fmtW(sel.top.w)}kg × {sel.top.r}
         </span>
-        {sel.mode !== "normal" && <span className="text-mute">{sel.mode === "deload" ? "deload" : "lighter"}</span>}
       </div>
       <div ref={box} className="w-full touch-pan-y overflow-hidden" onPointerMove={(e) => pick(e.clientX)} onPointerDown={(e) => pick(e.clientX)} onPointerLeave={() => setHi(null)}>
         {w > 0 && <svg width={w} height={H} role="img" aria-label={`Heaviest set over ${points.length} sessions, from ${fmtW(ys[0])} to ${fmtW(ys[ys.length - 1])} kg`}>

@@ -3,7 +3,13 @@
 export type Group = "back" | "traps" | "biceps" | "chest" | "shoulders" | "triceps" | "core" | "legs" | "other";
 /** stack = pin-selected weight stack, plates = plate-loaded machine. */
 export type Kind = "stack" | "plates" | "cable" | "dumbbell" | "barbell" | "bodyweight";
-export type Mode = "normal" | "deload" | "comeback";
+/** light = sick, deloading, coming back: scaled-down targets, kept out of stats, never moves next time. */
+export type Mode = "normal" | "light";
+/** Percent of the normal targets, 10-100 in steps of 10. */
+export interface Light {
+  w: number;
+  r: number;
+}
 export type Color = "blue" | "red" | "yellow" | "chalk";
 
 export interface Exercise {
@@ -57,6 +63,7 @@ export interface Session {
   date: string; // ISO start time
   end?: string; // ISO; absent = still in progress
   mode: Mode;
+  light?: Light; // set when mode is light
   /** Exercise order as the program had it at the start. */
   planned?: string[];
   /** In the order actually done; not started ones after. */

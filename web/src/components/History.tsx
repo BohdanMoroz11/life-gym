@@ -1,9 +1,9 @@
 import { useState } from "react";
 import type { DB, Mode, Session } from "../../../shared/types.ts";
-import { done, exMap, fmtDate, fmtSets, sessionLabel } from "../../../shared/logic.ts";
-import { cx, dayColor, go, useDeleteSession, useSaveSession } from "../lib.ts";
+import { done, exMap, fmtDate, fmtSets, isLight, LIGHT_DEFAULT, lightLabel, sessionLabel } from "../../../shared/logic.ts";
+import { cx, go, markStyle, useDeleteSession, useSaveSession } from "../lib.ts";
 import { FEEL, Rating, SessionEditor } from "./Session.tsx";
-import { Field, input, pill, Segmented } from "./ui.tsx";
+import { Field, input, LightPicker, pill, Segmented } from "./ui.tsx";
 
 export function HistoryPage({ db }: { db: DB }) {
   const sessions = done(db);
@@ -31,10 +31,10 @@ export function HistoryPage({ db }: { db: DB }) {
               return (
                 <button key={s.id} onClick={() => go(`/s/${s.id}`)} className="rounded-2xl bg-mat p-4 text-left hover:bg-bench">
                   <div className="flex items-center gap-2">
-                    <span className="h-4 w-1.5 rounded-full" style={{ background: dayColor(db, s.day) }} />
+                    <span className="h-4 w-1.5 rounded-full" style={markStyle(db, s)} />
                     <span className="font-semibold">{sessionLabel(db, s)}</span>
                     <span className="text-sm text-mute">{s.approx ? "date unknown" : fmtDate(s.date)}</span>
-                    {s.mode !== "normal" && <span className="text-sm text-mute">{s.mode === "deload" ? "deload" : "lighter"}</span>}
+                    {isLight(s) && <span className="text-sm text-mute">light</span>}
                     <span className="flex-1" />
                     {mins !== null && <span className="text-sm text-faint">{mins} min</span>}
                   </div>
@@ -95,7 +95,7 @@ export function SessionPage({ db, id }: { db: DB; id: string }) {
         ‹ Back
       </button>
       <div className="mt-4 flex items-center gap-3">
-        <span className="h-10 w-2 shrink-0 rounded-full" style={{ background: dayColor(db, s.day) }} />
+        <span className="h-10 w-2 shrink-0 rounded-full" style={markStyle(db, s)} />
         <h1 className="num text-4xl uppercase">{sessionLabel(db, s)}</h1>
       </div>
 
@@ -127,13 +127,18 @@ export function SessionPage({ db, id }: { db: DB; id: string }) {
           <div className="mb-1.5 text-sm text-mute">Kind</div>
           <Segmented<Mode>
             value={s.mode}
-            onChange={(mode) => save({ ...s, mode })}
+            onChange={(mode) => save({ ...s, mode, light: mode === "light" ? (s.light ?? LIGHT_DEFAULT) : undefined })}
             options={[
               { value: "normal", label: "Normal" },
-              { value: "comeback", label: "Lighter" },
-              { value: "deload", label: "Deload" },
+              { value: "light", label: "Light" },
             ]}
           />
+          {isLight(s) && (
+            <div className="mt-2 space-y-2">
+              <p className="text-sm text-mute">Out of records and charts, doesn't set next time. Done at {lightLabel(s.light)}.</p>
+              <LightPicker value={s.light ?? LIGHT_DEFAULT} onChange={(light) => save({ ...s, light })} />
+            </div>
+          )}
         </div>
         <Rating label="Body" words={FEEL.body} value={s.feel?.body} onChange={(body) => save({ ...s, feel: { ...s.feel, body } })} />
         <Rating label="Head" words={FEEL.mind} value={s.feel?.mind} onChange={(mind) => save({ ...s, feel: { ...s.feel, mind } })} />

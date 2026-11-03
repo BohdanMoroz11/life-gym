@@ -8,7 +8,10 @@ import {
   fmtSets,
   fmtTargets,
   fmtW,
-  history,
+  isLight,
+  lastLight,
+  lastNormal,
+  lightLabel,
   markStarted,
   newEntry,
   nextOf,
@@ -23,7 +26,7 @@ import {
   targetAt,
   verdict,
 } from "../../../shared/logic.ts";
-import { clock, cx, dayColor, useNow, useSync } from "../lib.ts";
+import { clock, cx, markStyle, useNow, useSync } from "../lib.ts";
 import { ExercisePicker, ExerciseSheet } from "./Exercises.tsx";
 import { AimPicker, Choice, input, Kg, pill, pillSm, Sheet, WeightStepper } from "./ui.tsx";
 
@@ -64,7 +67,7 @@ export function SessionEditor({ db, session, onChange, live, editing }: { db: DB
     onChange({ ...session, entries });
   };
   const add = (ex: Exercise) => {
-    onChange({ ...session, entries: [...session.entries, newEntry(db, ex, session.mode)] });
+    onChange({ ...session, entries: [...session.entries, newEntry(db, ex, session)] });
     setOpen(ex.id);
     setAdding(false);
   };
@@ -153,7 +156,8 @@ function ExerciseCard(props: {
 }) {
   const { db, session, ex, entry, open, onChange, live } = props;
   const plan = entry.plan ?? [];
-  const prev = useMemo(() => history(db, ex.id, session.id).find((h) => h.session.date < session.date), [db, ex.id, session.id, session.date]);
+  const prev = useMemo(() => lastNormal(db, ex.id, session), [db, ex.id, session.id, session.date]);
+  const light = useMemo(() => lastLight(db, ex.id, session), [db, ex.id, session.id, session.date]);
   const left = useMemo(() => noteFromLast(db, ex.id, session), [db, ex.id, session.id, session.date]);
   const planned = Math.max(plan.length, 1);
   const finished = entry.sets.length >= planned;
@@ -216,9 +220,9 @@ function ExerciseCard(props: {
               )}
             </div>
           )}
-          <LastTime prev={prev} ex={ex} />
+          <LastTime prev={prev} light={light} inLight={isLight(session)} ex={ex} />
           <Sets ex={ex} entry={entry} onChange={onChange} />
-          {entry.sets.length > 0 && <NextTime ex={ex} entry={entry} onChange={onChange} />}
+          {entry.sets.length > 0 && (isLight(session) ? <LightNext entry={entry} onChange={onChange} /> : <NextTime ex={ex} entry={entry} onChange={onChange} />)}
 
           {props.editing ? (
             <div className="grid grid-cols-4 gap-2">
@@ -292,18 +296,33 @@ function Progress({ done, planned, skip }: { done: number; planned: number; skip
   );
 }
 
-function LastTime({ prev, ex }: { prev?: { session: Session; entry: Entry }; ex: Exercise }) {
+type Item = { session: Session; entry: Entry };
+
+/** The last normal session (what today's targets come from), plus a newer light one as info. */
+function LastTime({ prev, light, inLight, ex }: { prev?: Item; light?: Item; inLight: boolean; ex: Exercise }) {
+  const lightRow = light && (
+    <div className={cx(prev && "mt-2 border-t border-rule/60 pt-2")}>
+      <div className="text-sm text-mute">
+        Light session, {agoLabel(light.session.date)} <span className="text-faint">({lightLabel(light.session.light)})</span>
+      </div>
+      <div className="num mt-0.5 text-lg leading-snug text-mute">{fmtSets(light.entry.sets)}</div>
+    </div>
+  );
   if (!prev)
     return (
-      <p className="rounded-xl bg-floor/60 px-3.5 py-3 text-sm text-mute">
-        First time logging this. Pick a weight you could do about {ex.aim} times; the app takes it from there.
-      </p>
+      <div className="rounded-xl bg-floor/60 px-3.5 py-3">
+        {!light && <p className="text-sm text-mute">First time logging this. Pick a weight you could do about {ex.aim} times; the app takes it from there.</p>}
+        {lightRow}
+      </div>
     );
   return (
     <div className="rounded-xl bg-floor/60 px-3.5 py-3">
-      <div className="text-sm text-mute">Last time, {prev.session.approx ? "from old notes" : agoLabel(prev.session.date)}</div>
+      <div className="text-sm text-mute">
+        {light || inLight ? "Last normal session" : "Last time"}, {prev.session.approx ? "from old notes" : agoLabel(prev.session.date)}
+      </div>
       <div className="num mt-0.5 text-xl leading-snug">{fmtSets(prev.entry.sets)}</div>
       {prev.session.approx && <p className="mt-1 text-sm text-faint">Old notes can be off. Fix the weight if it looks wrong.</p>}
+      {lightRow}
     </div>
   );
 }
@@ -506,10 +525,29 @@ function NextTime({ ex, entry, onChange }: { ex: Exercise; entry: Entry; onChang
         })}
       </div>
 
-      <label className="block">
-        <span className="mb-1.5 block text-sm text-mute">Note for next time only (gone after that)</span>
-        <textarea rows={2} className={cx(input, "h-auto py-3")} placeholder="Felt heavy, try 12 on set 2…" value={entry.note ?? ""} onChange={(e) => onChange({ ...entry, note: e.target.value || undefined })} />
-      </label>
+      <NextNote entry={entry} onChange={onChange} />
+    </div>
+  );
+}
+
+function NextNote({ entry, onChange }: { entry: Entry; onChange: (e: Entry) => void }) {
+  return (
+    <label className="block">
+      <span className="mb-1.5 block text-sm text-mute">Note for next time only (gone after that)</span>
+      <textarea rows={2} className={cx(input, "h-auto py-3")} placeholder="Felt heavy, try 12 on set 2…" value={entry.note ?? ""} onChange={(e) => onChange({ ...entry, note: e.target.value || undefined })} />
+    </label>
+  );
+}
+
+/** Light sessions never move targets, so only the note is left. */
+function LightNext({ entry, onChange }: { entry: Entry; onChange: (e: Entry) => void }) {
+  return (
+    <div className="space-y-3 rounded-2xl border border-rule p-3">
+      <div>
+        <span className="font-semibold">Next time</span>
+        <p className="text-sm text-mute">Light session, so next time starts from your last normal session again.</p>
+      </div>
+      <NextNote entry={entry} onChange={onChange} />
     </div>
   );
 }
@@ -524,11 +562,11 @@ export function SessionBar({ db, session, editing, onEdit, onFinish }: { db: DB;
   return (
     <div className="safe-t sticky top-0 z-30 -mx-4 border-b border-rule bg-floor/95 px-4 backdrop-blur sm:mx-0 sm:rounded-b-2xl">
       <div className="flex items-center gap-2.5 py-2.5">
-        <span className="h-9 w-1.5 shrink-0 rounded-full" style={{ background: dayColor(db, session.day) }} />
+        <span className="h-9 w-1.5 shrink-0 rounded-full" style={markStyle(db, session)} />
         <div className="min-w-0 flex-1">
           <div className="num truncate text-xl leading-tight">
             {sessionLabel(db, session)}
-            {session.mode !== "normal" && <span className="ml-2 font-sans text-sm font-medium text-mute">{session.mode === "deload" ? "deload" : "lighter"}</span>}
+            {isLight(session) && <span className="ml-2 font-sans text-sm font-medium text-mute">light</span>}
           </div>
           <div className="flex gap-3 text-sm text-mute">
             <span className="tabular-nums">{clock(now - new Date(session.date).getTime())}</span>
@@ -626,7 +664,7 @@ export function FinishSheet({ db, session, open, onClose, onFinish, onDiscard }:
         <Rating label="How did your body feel?" words={FEEL.body} value={feel.body} onChange={(body) => setFeel({ ...feel, body })} />
         <Rating label="And your head?" words={FEEL.mind} value={feel.mind} onChange={(mind) => setFeel({ ...feel, mind })} />
 
-        {notDone.length > 0 && (
+        {notDone.length > 0 && !isLight(session) && (
           <div className="space-y-3">
             <div className="text-sm text-mute">Not done. Why?</div>
             {notDone.map((e) => (
@@ -663,8 +701,12 @@ export function FinishSheet({ db, session, open, onClose, onFinish, onDiscard }:
           {did.map((e) => (
             <p key={e.ex}>
               <span className="text-chalk">{m.get(e.ex)?.name}</span> <span className="text-mute">{fmtSets(e.sets)}</span>
-              <br />
-              <span className="text-faint">next: {fmtTargets(nextOf(e, m.get(e.ex)!))}</span>
+              {!isLight(session) && (
+                <>
+                  <br />
+                  <span className="text-faint">next: {fmtTargets(nextOf(e, m.get(e.ex)!))}</span>
+                </>
+              )}
             </p>
           ))}
         </div>

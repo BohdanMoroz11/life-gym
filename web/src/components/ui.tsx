@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import type { Exercise } from "../../../shared/types.ts";
+import type { Exercise, Light } from "../../../shared/types.ts";
 import { AIMS, fmtW, isStack, stepOf, weightMeaning } from "../../../shared/logic.ts";
 import { cx } from "../lib.ts";
 
@@ -160,6 +160,28 @@ export function AimPicker({ value, onChange }: { value: number; onChange: (r: nu
           +
         </button>
       </div>
+    </div>
+  );
+}
+
+/** Light session: weight and reps as a percent of the normal targets, in 10% steps. */
+export function LightPicker({ value, onChange }: { value: Light; onChange: (l: Light) => void }) {
+  const row = (k: keyof Light, label: string) => (
+    <div className="flex items-center gap-2">
+      <span className="w-16 shrink-0 text-mute">{label}</span>
+      <button disabled={value[k] <= 10} onClick={() => onChange({ ...value, [k]: value[k] - 10 })} className={cx(pill, "h-12 w-14 shrink-0 bg-floor px-0 text-xl disabled:opacity-30")} aria-label={`Less ${label.toLowerCase()}`}>
+        −
+      </button>
+      <div className="num flex h-12 min-w-0 flex-1 items-center justify-center rounded-xl bg-floor/50 text-2xl tabular-nums">{value[k]}%</div>
+      <button disabled={value[k] >= 100} onClick={() => onChange({ ...value, [k]: value[k] + 10 })} className={cx(pill, "h-12 w-14 shrink-0 bg-floor px-0 text-xl disabled:opacity-30")} aria-label={`More ${label.toLowerCase()}`}>
+        +
+      </button>
+    </div>
+  );
+  return (
+    <div className="space-y-2">
+      {row("w", "Weight")}
+      {row("r", "Reps")}
     </div>
   );
 }

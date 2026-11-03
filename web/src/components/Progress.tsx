@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { DB, Group } from "../../../shared/types.ts";
-import { daysBetween, equipLabel, fmtDate, fmtW, GROUP_LABEL, logged, programOf, programsWith, sessionLabel, series, setsByGroup, stalledFor, tips, trend, weekStart, weekStreak, type Point, type Tip, type Trend } from "../../../shared/logic.ts";
-import { cx, dayColor, go } from "../lib.ts";
+import type { DB, Group, Mode } from "../../../shared/types.ts";
+import { daysBetween, equipLabel, fmtDate, fmtW, GROUP_LABEL, isLight, logged, programOf, programsWith, sessionLabel, series, setsByGroup, stalledFor, tips, trend, weekStart, weekStreak, type Point, type Tip, type Trend } from "../../../shared/logic.ts";
+import { cx, dayColor, go, markStyle } from "../lib.ts";
 
 export function ProgressPage({ db }: { db: DB }) {
   const real = logged(db);
@@ -77,8 +77,9 @@ export function TipList({ tips, db }: { tips: Tip[]; db: DB }) {
 /** Week columns (Mon at the top), newest on the right. Imported sessions are left out: their dates are guesses. */
 function Calendar({ db }: { db: DB }) {
   const WEEKS = 26;
-  const byDay = new Map<string, { day: string | null; id: string; label: string }>();
-  for (const s of logged(db)) byDay.set(new Date(s.date).toDateString(), { day: s.day, id: s.id, label: sessionLabel(db, s) });
+  const byDay = new Map<string, { day: string | null; mode: Mode; id: string; label: string }>();
+  for (const s of logged(db)) byDay.set(new Date(s.date).toDateString(), { day: s.day, mode: s.mode, id: s.id, label: sessionLabel(db, s) + (isLight(s) ? ", light" : "") });
+  const anyLight = logged(db).some(isLight);
   const start = weekStart(new Date());
   start.setDate(start.getDate() - (WEEKS - 1) * 7);
   const ref = useRef<HTMLDivElement>(null);
@@ -113,8 +114,8 @@ function Calendar({ db }: { db: DB }) {
                     onMouseEnter={() => setHover(label)}
                     onFocus={() => setHover(label)}
                     onMouseLeave={() => setHover(null)}
-                    className="grid h-[18px] w-[18px] place-items-center rounded-[4px] text-[10px] font-bold text-floor"
-                    style={{ background: dayColor(db, s.day) }}
+                    className={cx("grid h-[18px] w-[18px] place-items-center rounded-[4px] text-[10px] font-bold", isLight(s) ? "text-chalk" : "text-floor")}
+                    style={markStyle(db, s)}
                     aria-label={label}
                   >
                     {programOf(db, s.day)?.name.charAt(0).toUpperCase() ?? ""}
@@ -134,6 +135,12 @@ function Calendar({ db }: { db: DB }) {
             {p.name}
           </span>
         ))}
+        {anyLight && (
+          <span className="flex items-center gap-1.5">
+            <span className="h-3 w-3 rounded-[3px]" style={{ boxShadow: "inset 0 0 0 2px var(--color-mute)" }} />
+            Light
+          </span>
+        )}
         <span className="flex-1" />
         <span className="text-chalk">{hover ?? "Last 6 months"}</span>
       </div>
