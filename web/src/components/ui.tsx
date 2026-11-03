@@ -142,7 +142,7 @@ export function Field({ label, children }: { label: string; children: ReactNode 
 export function AimPicker({ value, onChange }: { value: number; onChange: (r: number) => void }) {
   return (
     <div className="space-y-1.5">
-      <div className="grid grid-cols-7 gap-1">
+      <div className="grid grid-cols-8 gap-1">
         {AIMS.map((a) => (
           <button key={a} onClick={() => onChange(a)} aria-pressed={a === value} className={cx("num h-12 min-w-0 rounded-xl text-xl", a === value ? "bg-chalk text-floor" : "bg-floor text-chalk active:bg-rule")}>
             {a}

@@ -131,7 +131,7 @@ export function history(db: DB, exId: string, skipSession?: string): HistoryItem
 // ---------- reps and progression ----------
 
 /** Rep goals people actually pick. "+reps" moves to the next one. */
-export const AIMS = [5, 6, 8, 10, 12, 15, 20];
+export const AIMS = [5, 6, 8, 10, 12, 15, 18, 20];
 export const nextAim = (r: number) => AIMS.find((a) => a > r) ?? r + 5;
 
 /** At or over the goal = hit. One or two short = close (fine). Further short = a miss. */
