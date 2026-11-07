@@ -97,7 +97,7 @@ function Start({ db, onStart }: { db: DB; onStart: (s: Session) => void }) {
   const color = program ? dayColor(db, day) : "var(--color-chalk)";
 
   return (
-    <div className="grid gap-8 pt-4 pb-10 lg:grid-cols-[minmax(0,1fr)_22rem] lg:pt-8">
+    <div className="grid grid-cols-1 gap-8 pt-4 pb-10 lg:grid-cols-[minmax(0,1fr)_22rem] lg:pt-8">
       <div>
         <p className="text-mute">{today}</p>
         <h1 className="num mt-1 text-[clamp(3.5rem,14vw,6.5rem)] leading-[0.9] uppercase">{label}</h1>
@@ -115,7 +115,10 @@ function Start({ db, onStart }: { db: DB; onStart: (s: Session) => void }) {
                   <li key={ex.id} className="flex items-baseline gap-3 py-3">
                     <span className="num w-5 shrink-0 text-lg text-faint">{i + 1}</span>
                     <span className="min-w-0 flex-1 font-medium">{ex.name}</span>
-                    <span className="num shrink-0 text-right text-lg text-mute">{ts.length ? fmtTargets(ts) : "new"}</span>
+                    <span className="num min-w-0 text-right text-lg text-mute">
+                      {/* Each set stays on one line; a long plan wraps between sets instead of widening the page. */}
+                      {ts.length ? fmtTargets(ts).split(", ").map((t, j, a) => <span key={j} className="whitespace-nowrap">{t}{j < a.length - 1 && ", "}</span>) : "new"}
+                    </span>
                   </li>
                 );
               })}

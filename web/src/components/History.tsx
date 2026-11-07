@@ -25,7 +25,7 @@ export function HistoryPage({ db }: { db: DB }) {
             <span className="text-faint">{ss.length} sessions</span>
           </h2>
           {month === "From your old notes" && <p className="mb-2 text-sm text-faint">Imported from the iPhone note. Dates are guesses and some numbers may be off. They only seed the starting weights; they don't count in stats.</p>}
-          <div className="grid gap-2 md:grid-cols-2">
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
             {ss.map((s) => {
               const mins = s.end && !s.approx ? Math.round((new Date(s.end).getTime() - new Date(s.date).getTime()) / 60000) : null;
               return (

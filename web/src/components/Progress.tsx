@@ -184,7 +184,7 @@ function ExerciseList({ db }: { db: DB }) {
   const home = (exId: string) => programsWith(db, exId)[0]?.id ?? "other";
   if (!rows.length) return <p className="text-sm text-mute">Log a few sessions and each exercise gets its own trend here.</p>;
   return (
-    <div className="grid gap-6 md:grid-cols-2">
+    <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
       {groups.map((g) => {
         const rs = rows.filter((x) => home(x.e.id) === g.id);
         if (!rs.length) return null;
