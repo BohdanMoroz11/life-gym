@@ -22,6 +22,9 @@ import {
   ordinal,
   programOf,
   prsIn,
+  bestAt,
+  beats,
+  orderShift,
   sameNext,
   sessionLabel,
   started,
@@ -163,7 +166,13 @@ function ExerciseCard(props: {
   const left = useMemo(() => noteFromLast(db, ex.id, session), [db, ex.id, session.id, session.date]);
   const planned = Math.max(plan.length, 1);
   const finished = entry.sets.length >= planned;
-  const pr = entry.sets.length ? prsIn(db, session, entry) : undefined;
+  // What each set position has done before: a planned target above it is an attempt at a best.
+  const bests = useMemo(
+    () => (isLight(session) ? [] : Array.from({ length: Math.max(plan.length, entry.sets.length) + 1 }, (_, i) => bestAt(db, session, ex.id, i))),
+    [db, ex.id, session.id, session.date, session.mode, plan.length, entry.sets.length],
+  );
+  const prs = useMemo(() => prsIn(db, session, entry, ex), [db, session, entry, ex]);
+  const going = !isLight(session) && plan.some((t, i) => !entry.sets[i] && beats(t, bests[i]));
   const moved = props.order !== undefined && props.plannedAt !== undefined && props.plannedAt !== props.order - 1;
 
   return (
@@ -175,7 +184,8 @@ function ExerciseCard(props: {
           <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-mute">
             <span className="rounded-md bg-floor px-1.5 py-px text-xs font-semibold text-mute">{ex.oneoff ? "One-off" : equipLabel(ex)}</span>
             {maxedOut(ex, entry.sets.length ? entry.sets : plan) && <MaxTag />}
-            {pr && <span className="rounded-md bg-green/15 px-1.5 py-px text-xs font-semibold text-green">Best ever</span>}
+            {prs.length > 0 && <span className="rounded-md bg-green/15 px-1.5 py-px text-xs font-semibold text-green">Best ever</span>}
+            {!prs.length && going && <span className="rounded-md px-1.5 py-px text-xs font-semibold text-green ring-1 ring-green/50 ring-inset">Going for a best</span>}
           </div>
           <p className="mt-1 text-[15px]">
             {entry.sets.length ? (
@@ -224,7 +234,7 @@ function ExerciseCard(props: {
             </div>
           )}
           <LastTime prev={prev} light={light} inLight={isLight(session)} ex={ex} />
-          <Sets ex={ex} entry={entry} onChange={onChange} />
+          <Sets ex={ex} entry={entry} bests={bests} prs={prs.map((p) => p.i)} onChange={onChange} />
           {entry.sets.length > 0 && (isLight(session) ? <LightNext entry={entry} onChange={onChange} /> : <NextTime ex={ex} entry={entry} onChange={onChange} />)}
 
           {props.editing ? (
@@ -322,6 +332,7 @@ function LastTime({ prev, light, inLight, ex }: { prev?: Item; light?: Item; inL
     <div className="rounded-xl bg-floor/60 px-3.5 py-3">
       <div className="text-sm text-mute">
         {light || inLight ? "Last normal session" : "Last time"}, {prev.session.approx ? "from old notes" : agoLabel(prev.session.date)}
+        <Order session={prev.session} exId={ex.id} />
       </div>
       <div className="num mt-0.5 text-xl leading-snug">{fmtSets(prev.entry.sets)}</div>
       {prev.session.approx && <p className="mt-1 text-sm text-faint">Old notes can be off. Fix the weight if it looks wrong.</p>}
@@ -330,7 +341,19 @@ function LastTime({ prev, light, inLight, ex }: { prev?: Item; light?: Item; inL
   );
 }
 
-function Sets({ ex, entry, onChange }: { ex: Exercise; entry: Entry; onChange: (e: Entry | null) => void }) {
+/** Done earlier than planned = fresher than usual; later = more tired. Worth knowing when reading the numbers. */
+function Order({ session, exId }: { session: Session; exId: string }) {
+  const o = orderShift(session, exId);
+  if (!o || o.done === o.planned) return null;
+  return (
+    <span className="text-faint">
+      {" · "}
+      <span className="text-chalk">{o.done < o.planned ? "done earlier" : "done later"}</span> ({ordinal(o.done)}, planned {ordinal(o.planned)})
+    </span>
+  );
+}
+
+function Sets({ ex, entry, bests, prs, onChange }: { ex: Exercise; entry: Entry; bests: (SetLog | undefined)[]; prs: number[]; onChange: (e: Entry | null) => void }) {
   const plan = entry.plan ?? [];
   const [editing, setEditing] = useState<number | null>(null);
   const [extra, setExtra] = useState(0);
@@ -368,14 +391,14 @@ function Sets({ ex, entry, onChange }: { ex: Exercise; entry: Entry; onChange: (
                 <Kg w={s.w} /> <span className="text-mute">×</span> {s.r}
               </span>
               <span className="flex-1" />
-              <Verdict r={s.r} aim={t.r} />
+              {prs.includes(i) ? <span className="shrink-0 rounded-md bg-green/15 px-1.5 py-0.5 text-sm font-semibold whitespace-nowrap text-green">Best ever ✓</span> : <Verdict r={s.r} aim={t.r} />}
               <span className="text-sm text-faint" aria-hidden>
                 Edit
               </span>
             </button>
           );
         if (s || i === active)
-          return <SetInput key={i} index={i} ex={ex} target={t} initial={s} onAim={(r) => setAim(i, r)} onLog={(x) => log(i, x)} onRemove={s ? () => remove(i) : undefined} onCancel={s ? () => setEditing(null) : undefined} />;
+          return <SetInput key={i} index={i} ex={ex} target={t} best={bests[i]} initial={s} onAim={(r) => setAim(i, r)} onLog={(x) => log(i, x)} onRemove={s ? () => remove(i) : undefined} onCancel={s ? () => setEditing(null) : undefined} />;
         return (
           <div key={i} className="flex min-h-11 items-center gap-3 rounded-xl border border-dashed border-rule px-3.5 text-faint">
             <span className="w-11 shrink-0 text-sm">Set {i + 1}</span>
@@ -396,13 +419,13 @@ function Sets({ ex, entry, onChange }: { ex: Exercise; entry: Entry; onChange: (
 
 function Verdict({ r, aim }: { r: number; aim: number }) {
   const v = verdict(r, aim);
-  if (v === "hit") return <span className="text-sm font-medium text-green">Goal {aim} ✓</span>;
+  if (v === "hit") return <span className="text-sm font-medium whitespace-nowrap text-green">Goal {aim} ✓</span>;
   if (v === "close") return <span className="text-sm text-mute">Close to {aim}</span>;
   return <span className="text-sm text-amber">Short of {aim}</span>;
 }
 
 /** Weight stepper plus a strip of rep numbers. Tapping a number logs the set: one tap when the weight is right. */
-function SetInput({ index, ex, target, initial, onAim, onLog, onRemove, onCancel }: { index: number; ex: Exercise; target: Target; initial?: SetLog; onAim: (r: number) => void; onLog: (s: SetLog) => void; onRemove?: () => void; onCancel?: () => void }) {
+function SetInput({ index, ex, target, best, initial, onAim, onLog, onRemove, onCancel }: { index: number; ex: Exercise; target: Target; best?: SetLog; initial?: SetLog; onAim: (r: number) => void; onLog: (s: SetLog) => void; onRemove?: () => void; onCancel?: () => void }) {
   const [w, setW] = useState(initial?.w ?? target.w);
   const [aiming, setAiming] = useState(false);
   useEffect(() => setW(initial?.w ?? target.w), [target.w, initial?.w]);
@@ -432,6 +455,15 @@ function SetInput({ index, ex, target, initial, onAim, onLog, onRemove, onCancel
       <div className="mt-3">
         <WeightStepper value={w} ex={ex} onChange={setW} />
       </div>
+      {beats({ w, r: target.r }, best) && (
+        <p className="mt-3 rounded-xl bg-green/10 px-3 py-2 text-[15px] leading-snug">
+          <span className="font-semibold text-green">Going for a best.</span> Get {target.r} and it beats set {index + 1}'s best,{" "}
+          <span className="num text-lg whitespace-nowrap">
+            {fmtW(best!.w)}kg × {best!.r}
+          </span>
+          .
+        </p>
+      )}
       <div className="mt-4 mb-1.5 text-sm text-mute">Tap the reps you did</div>
       <div ref={strip} className="no-scrollbar -mx-3 flex gap-1.5 overflow-x-auto px-3 py-1">
         {reps.map((r) => {
@@ -637,7 +669,7 @@ export function FinishSheet({ db, session, open, onClose, onFinish, onDiscard }:
   const sets = session.entries.reduce((n, e) => n + e.sets.length, 0);
   const did = session.entries.filter(started);
   const notDone = session.entries.filter((e) => !started(e));
-  const prs = did.map((e) => ({ e, pr: prsIn(db, session, e) })).filter((x) => x.pr);
+  const prs = did.flatMap((e) => (m.get(e.ex) ? prsIn(db, session, e, m.get(e.ex)!).map((p) => ({ e, ...p })) : []));
   const mins = Math.round((end - start) / 60000);
   const isNow = Math.abs(end - Date.now()) < 60_000;
 
@@ -694,11 +726,11 @@ export function FinishSheet({ db, session, open, onClose, onFinish, onDiscard }:
         {prs.length > 0 && (
           <div className="rounded-xl bg-green/10 px-3.5 py-3">
             <p className="text-sm font-semibold text-green">Best ever</p>
-            {prs.map(({ e, pr }) => (
-              <p key={e.ex}>
-                {m.get(e.ex)?.name}{" "}
+            {prs.map(({ e, i, set }) => (
+              <p key={`${e.ex}-${i}`}>
+                {m.get(e.ex)?.name}, set {i + 1}{" "}
                 <span className="num text-lg">
-                  {fmtW(pr!.w)}kg × {pr!.r}
+                  {fmtW(set.w)}kg × {set.r}
                 </span>
               </p>
             ))}

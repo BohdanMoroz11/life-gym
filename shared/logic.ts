@@ -188,10 +188,14 @@ export function nextOptions(entry: Entry, ex: Exercise): NextOption[] {
   if (!rest.length) return out;
   const sameAim = rest.every((t) => t.r === rest[0].r);
   out.push({ key: "r2", label: `${restName} → ${sameAim ? `${nextAim(rest[0].r)} reps` : "more reps"}`, ts: [first, ...rest.map((t) => ({ ...t, r: nextAim(t.r) }))] });
-  const heavier = rest.map((t) => ({ ...t, w: Math.max(t.w, Math.min(first.w, up(t.w))) }));
+  // Heavier on set 2 starts over at set 1's rep goal (15kg × 10, 12.5kg × 15 → 15kg × 10 on both).
+  const heavier = rest.map((t) => {
+    const w = Math.max(t.w, Math.min(first.w, up(t.w)));
+    return w > t.w ? { w, r: first.r } : t;
+  });
   if (ex.inc > 0 && heavier.some((t, i) => t.w !== rest[i].w)) {
     const sameW = heavier.every((t) => t.w === heavier[0].w);
-    out.push({ key: "w2", label: `${restName} → ${sameW ? `${fmtW(heavier[0].w)}kg` : "heavier"}`, ts: [first, ...heavier] });
+    out.push({ key: "w2", label: `${restName} → ${sameW ? `${fmtW(heavier[0].w)}kg × ${heavier[0].r}` : "heavier"}`, ts: [first, ...heavier] });
   }
   return out;
 }
@@ -322,14 +326,40 @@ export const e1rm = (s: SetLog) => (s.r ? s.w * (1 + s.r / 30) : 0);
 const better = (a: SetLog, b: SetLog) => a.w > b.w || (a.w === b.w && a.r > b.r);
 export const topSet = (sets: SetLog[]) => sets.reduce<SetLog | undefined>((t, s) => (!t || better(s, t) ? s : t), undefined);
 
-/** Sets in this entry that beat everything before it: heavier, or more reps at the heaviest weight. */
-export function prsIn(db: DB, session: Session, entry: Entry): SetLog | undefined {
-  if (isLight(session)) return undefined;
-  const before = history(db, entry.ex).filter((h) => !h.session.approx && !isLight(h.session) && h.session.date < session.date && h.session.id !== session.id);
-  if (!before.length) return undefined;
-  const best = topSet(before.flatMap((h) => h.entry.sets))!;
-  const mine = topSet(entry.sets);
-  return mine && better(mine, best) ? mine : undefined;
+/**
+ * The best a set position (set 1, set 2…) has done before this session, counting only sets that hit their goal:
+ * a failed attempt (24kg × 7 against a goal of 10) doesn't become the bar, unless the goal was never hit there. Normal, logged sessions only.
+ */
+export function bestAt(db: DB, session: Session, exId: string, i: number): SetLog | undefined {
+  const ex = db.exercises.find((e) => e.id === exId);
+  if (!ex) return undefined;
+  const before = history(db, exId).filter((h) => !h.session.approx && !isLight(h.session) && h.session.date < session.date && h.session.id !== session.id);
+  const sets = before.flatMap((h) => (h.entry.sets[i] ? [{ s: h.entry.sets[i], hit: h.entry.sets[i].r >= targetAt(h.entry, ex, i).r }] : []));
+  // Never hit the goal on this set yet: then the best attempt is what to beat.
+  return topSet(sets.filter((x) => x.hit).map((x) => x.s)) ?? topSet(sets.map((x) => x.s));
+}
+
+/** Beats a best: heavier, or the same weight for more reps. */
+export const beats = (s: { w: number; r: number }, best: SetLog | undefined) => !!best && better(s as SetLog, best);
+
+/**
+ * Bests in this entry, set by set: the goal was hit and it beats what that set did before.
+ * A heavier set that missed the goal is an attempt, not a best. A first-ever set has nothing to beat.
+ */
+export function prsIn(db: DB, session: Session, entry: Entry, ex: Exercise): { i: number; set: SetLog }[] {
+  if (isLight(session)) return [];
+  return entry.sets.flatMap((set, i) => (set.r >= targetAt(entry, ex, i).r && beats(set, bestAt(db, session, entry.ex, i)) ? [{ i, set }] : []));
+}
+
+/** Where an exercise was done vs where the program had it, counting only what was done that day. */
+export function orderShift(session: Session, exId: string): { done: number; planned: number } | undefined {
+  if (!session.planned?.length) return undefined;
+  const doneOrder = session.entries.filter(started).map((e) => e.ex);
+  const plannedOrder = session.planned.filter((id) => doneOrder.includes(id));
+  const done = doneOrder.indexOf(exId);
+  const planned = plannedOrder.indexOf(exId);
+  if (done < 0 || planned < 0) return undefined;
+  return { done: done + 1, planned: planned + 1 };
 }
 
 export interface Point {
