@@ -19,6 +19,7 @@ export interface Exercise {
   kind: Kind;
   inc: number; // kg added by "+weight" next time; stack and cable steppers move by it too
   aim: number; // default rep goal for a new set
+  max?: number; // heaviest the machine goes (kg); at it, progression is reps only
   side?: "each"; // one arm/leg at a time, same weight and reps per side
   note?: string; // note that stays: seat position, grip, form cue
   archived?: boolean;

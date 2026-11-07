@@ -54,6 +54,11 @@ export const isFree = (ex: Exercise) => ex.kind === "dumbbell" || ex.kind === "b
 /** Pin stacks and cables move by the stack step; plates and free weights by 0.5, with jump buttons for big changes. */
 export const isStack = (ex: Exercise) => ex.kind === "stack" || ex.kind === "cable";
 export const stepOf = (ex: Exercise) => (isStack(ex) ? ex.inc || 1 : 0.5);
+/** The machine's top weight, if set: nothing goes past it. */
+export const capW = (ex: Exercise, w: number) => (ex.max ? Math.min(ex.max, w) : w);
+export const atMax = (ex: Exercise, w: number) => !!ex.max && w >= ex.max;
+/** Maxed out: the heaviest target is at the machine's top weight, so only reps can go up. */
+export const maxedOut = (ex: Exercise, ts: Target[]) => ts.some((t) => atMax(ex, t.w));
 
 /** "Dumbbells, both arms together", "Machine, pin stack · one side at a time". */
 export function equipLabel(ex: Exercise): string {
@@ -172,18 +177,18 @@ export function nextOptions(entry: Entry, ex: Exercise): NextOption[] {
   const base = sameNext(entry, ex);
   const out: NextOption[] = [{ key: "same", label: "Same", ts: base }];
   if (!base.length) return out;
-  const up = (w: number) => +(w + ex.inc).toFixed(2);
+  // Capped at the machine's max: weight options vanish there and reps take over.
+  const up = (w: number) => capW(ex, +(w + ex.inc).toFixed(2));
   const first = base[0];
   const rest = base.slice(1);
   const restName = rest.length > 1 ? `Sets 2–${base.length}` : "Set 2";
-  if (ex.inc > 0) out.push({ key: "w1", label: rest.length ? `Set 1 → ${fmtW(up(first.w))}kg` : `→ ${fmtW(up(first.w))}kg`, ts: [{ ...first, w: up(first.w) }, ...rest] });
-  if (!rest.length) {
-    out.push({ key: "r1", label: `→ ${nextAim(first.r)} reps`, ts: [{ ...first, r: nextAim(first.r) }] });
-    return out;
-  }
+  const canUp1 = ex.inc > 0 && up(first.w) > first.w;
+  if (canUp1) out.push({ key: "w1", label: rest.length ? `Set 1 → ${fmtW(up(first.w))}kg` : `→ ${fmtW(up(first.w))}kg`, ts: [{ ...first, w: up(first.w) }, ...rest] });
+  if (!rest.length || !canUp1) out.push({ key: "r1", label: rest.length ? `Set 1 → ${nextAim(first.r)} reps` : `→ ${nextAim(first.r)} reps`, ts: [{ ...first, r: nextAim(first.r) }, ...rest] });
+  if (!rest.length) return out;
   const sameAim = rest.every((t) => t.r === rest[0].r);
   out.push({ key: "r2", label: `${restName} → ${sameAim ? `${nextAim(rest[0].r)} reps` : "more reps"}`, ts: [first, ...rest.map((t) => ({ ...t, r: nextAim(t.r) }))] });
-  const heavier = rest.map((t) => ({ ...t, w: Math.min(first.w, up(t.w)) }));
+  const heavier = rest.map((t) => ({ ...t, w: Math.max(t.w, Math.min(first.w, up(t.w))) }));
   if (ex.inc > 0 && heavier.some((t, i) => t.w !== rest[i].w)) {
     const sameW = heavier.every((t) => t.w === heavier[0].w);
     out.push({ key: "w2", label: `${restName} → ${sameW ? `${fmtW(heavier[0].w)}kg` : "heavier"}`, ts: [first, ...heavier] });
@@ -246,7 +251,7 @@ export function startSession(db: DB, day: string | null, mode: Mode, light?: Lig
 export function newEntry(db: DB, ex: Exercise, s: Pick<Session, "mode" | "light">): Entry {
   let plan = targetsFor(db, ex);
   if (!plan.length) plan = [0, 1].map(() => ({ w: isStack(ex) ? ex.inc * 2 : 10, r: ex.aim }));
-  return { ex: ex.id, sets: [], plan: applyMode(plan, s, ex) };
+  return { ex: ex.id, sets: [], plan: applyMode(plan.map((t) => ({ ...t, w: capW(ex, t.w) })), s, ex) };
 }
 
 /** The light % changed mid-session: what isn't started yet gets re-scaled. */
@@ -429,7 +434,10 @@ export function tips(db: DB): Tip[] {
     if (!p.length || daysBetween(p[p.length - 1].date) > 45) continue;
     const stuck = stalledFor(p);
     if (stuck >= 4) {
-      out.push({ id: `stall-${ex.id}`, tone: "nudge", ex: ex.id, text: `${ex.name} hasn't beaten its best in ${stuck} sessions. Drop one step (${fmtW(ex.inc)} kg) and build the reps back up.` });
+      const text = atMax(ex, p[p.length - 1].top.w)
+        ? `${ex.name} is at the machine's max (${fmtW(ex.max!)} kg) and hasn't beaten its best in ${stuck} sessions. Add a rep at a time, slow the lowering down, or swap to a harder variation.`
+        : `${ex.name} hasn't beaten its best in ${stuck} sessions. Drop one step (${fmtW(ex.inc)} kg) and build the reps back up.`;
+      out.push({ id: `stall-${ex.id}`, tone: "nudge", ex: ex.id, text });
       continue;
     }
     const month = p.filter((x) => daysBetween(x.date) <= 30 && x.mode === "normal");

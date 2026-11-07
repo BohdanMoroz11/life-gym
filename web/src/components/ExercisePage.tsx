@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import type { DB, Exercise } from "../../../shared/types.ts";
-import { equipLabel, fmtDate, fmtSets, fmtTargets, fmtW, history, isLight, programsWith, series, targetsFor, type Point } from "../../../shared/logic.ts";
+import { equipLabel, fmtDate, fmtSets, fmtTargets, fmtW, history, isLight, maxedOut, programsWith, series, targetsFor, type Point } from "../../../shared/logic.ts";
 import { COLOR_VAR, cx, go, useSaveExercise } from "../lib.ts";
 import { ExerciseForm } from "./Exercises.tsx";
-import { pill, Toggle } from "./ui.tsx";
+import { MaxTag, pill, Toggle } from "./ui.tsx";
 
 export function ExercisePage({ db, id }: { db: DB; id: string }) {
   const ex = db.exercises.find((e) => e.id === id);
@@ -26,6 +26,12 @@ export function ExercisePage({ db, id }: { db: DB; id: string }) {
       {targetsFor(db, ex).length > 0 && (
         <p className="mt-4 text-mute">
           Next time <span className="num text-xl text-chalk">{fmtTargets(targetsFor(db, ex))}</span>
+          {maxedOut(ex, targetsFor(db, ex)) && (
+            <>
+              {" "}
+              <MaxTag /> <span className="text-sm">{fmtW(ex.max!)}kg is the top, reps from here</span>
+            </>
+          )}
         </p>
       )}
 

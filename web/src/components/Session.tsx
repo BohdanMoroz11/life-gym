@@ -16,6 +16,8 @@ import {
   newEntry,
   nextOf,
   nextOptions,
+  maxedOut,
+  atMax,
   noteFromLast,
   ordinal,
   programOf,
@@ -28,7 +30,7 @@ import {
 } from "../../../shared/logic.ts";
 import { clock, cx, markStyle, useNow, useSync } from "../lib.ts";
 import { ExercisePicker, ExerciseSheet } from "./Exercises.tsx";
-import { AimPicker, Choice, input, Kg, pill, pillSm, Sheet, WeightStepper } from "./ui.tsx";
+import { AimPicker, Choice, input, Kg, MaxTag, pill, pillSm, Sheet, WeightStepper } from "./ui.tsx";
 
 type Group = "done" | "next" | "off";
 const groupOf = (e: Entry): Group => (started(e) ? "done" : e.skip ? "off" : "next");
@@ -172,6 +174,7 @@ function ExerciseCard(props: {
           <h3 className="num text-[1.6rem] leading-[1.1]">{ex.name}</h3>
           <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-mute">
             <span className="rounded-md bg-floor px-1.5 py-px text-xs font-semibold text-mute">{ex.oneoff ? "One-off" : equipLabel(ex)}</span>
+            {maxedOut(ex, entry.sets.length ? entry.sets : plan) && <MaxTag />}
             {pr && <span className="rounded-md bg-green/15 px-1.5 py-px text-xs font-semibold text-green">Best ever</span>}
           </div>
           <p className="mt-1 text-[15px]">
@@ -484,6 +487,11 @@ function NextTime({ ex, entry, onChange }: { ex: Exercise; entry: Entry; onChang
         <span className="font-semibold">Next time</span>
         {hit.length > 0 && <span className="text-sm text-green">{hit.length === entry.sets.length && hit.length >= (entry.plan?.length ?? 1) && hit.length > 1 ? "Goal hit on every set" : `Goal hit on set ${hit.join(" and ")}`}</span>}
       </div>
+      {maxedOut(ex, base) && (
+        <p className="-mt-1 text-sm text-mute">
+          <MaxTag /> {fmtW(ex.max!)}kg is the machine's max, so {base.every((t) => atMax(ex, t.w)) ? "it goes up in reps from here" : "the maxed sets go up in reps from here"}.
+        </p>
+      )}
       <div className="grid grid-cols-2 gap-1.5">
         {options.map((o) => (
           <button

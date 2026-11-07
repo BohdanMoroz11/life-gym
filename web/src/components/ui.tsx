@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import type { Exercise, Light } from "../../../shared/types.ts";
-import { AIMS, fmtW, isStack, stepOf, weightMeaning } from "../../../shared/logic.ts";
+import { AIMS, atMax, capW, fmtW, isStack, stepOf, weightMeaning } from "../../../shared/logic.ts";
 import { cx } from "../lib.ts";
 
 /** Bottom sheet on phones, centered dialog on wider screens. */
@@ -52,7 +52,8 @@ export const Kg = ({ w, className }: { w: number; className?: string }) => (
 export function WeightStepper({ value, ex, onChange }: { value: number; ex: Exercise; onChange: (w: number) => void }) {
   const step = stepOf(ex);
   const [typing, setTyping] = useState(false);
-  const set = (w: number) => onChange(Math.max(0, +w.toFixed(2)));
+  const set = (w: number) => onChange(capW(ex, Math.max(0, +w.toFixed(2))));
+  const top = atMax(ex, value);
   const btn = "grid h-14 w-14 shrink-0 place-items-center rounded-2xl bg-rule text-3xl leading-none text-chalk active:bg-mute/50";
   return (
     <div className="space-y-2">
@@ -80,21 +81,25 @@ export function WeightStepper({ value, ex, onChange }: { value: number; ex: Exer
             <Kg w={value} />
           </button>
         )}
-        <button className={btn} onClick={() => set(value + step)} aria-label={`Plus ${fmtW(step)} kg`}>
+        <button className={cx(btn, "disabled:opacity-30")} disabled={top} onClick={() => set(value + step)} aria-label={`Plus ${fmtW(step)} kg`}>
           +
         </button>
       </div>
       {!isStack(ex) && (
         <div className="flex justify-center gap-2">
           {[-5, -2.5, 2.5, 5].map((d) => (
-            <button key={d} onClick={() => set(value + d)} className="num h-10 min-w-14 rounded-lg bg-floor/70 px-2 text-lg text-mute active:bg-rule" aria-label={`${d > 0 ? "Plus" : "Minus"} ${Math.abs(d)} kg`}>
+            <button key={d} disabled={d > 0 && top} onClick={() => set(value + d)} className="num h-10 min-w-14 rounded-lg bg-floor/70 px-2 text-lg text-mute active:bg-rule disabled:opacity-30" aria-label={`${d > 0 ? "Plus" : "Minus"} ${Math.abs(d)} kg`}>
               {d > 0 ? "+" : "−"}
               {Math.abs(d)}
             </button>
           ))}
         </div>
       )}
-      {weightMeaning(ex) && <p className="text-center text-sm text-mute">{weightMeaning(ex)}</p>}
+      {(weightMeaning(ex) || top) && (
+        <p className="text-center text-sm text-mute">
+          {[weightMeaning(ex), top && `${fmtW(ex.max!)}kg is the machine's max`].filter(Boolean).join(" · ")}
+        </p>
+      )}
     </div>
   );
 }
@@ -185,6 +190,9 @@ export function LightPicker({ value, onChange }: { value: Light; onChange: (l: L
     </div>
   );
 }
+
+/** "Maxed out": the machine's top weight is reached, progression is in reps. */
+export const MaxTag = () => <span className="rounded-md bg-chalk/15 px-1.5 py-px text-xs font-semibold text-chalk">Maxed out</span>;
 
 /** On/off row, a big tappable switch. */
 export function Toggle({ label, sub, value, onChange }: { label: string; sub?: string; value: boolean; onChange: (v: boolean) => void }) {

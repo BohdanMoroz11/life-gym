@@ -158,6 +158,7 @@ export function ExerciseForm({ value: e, onChange }: { value: Exercise; onChange
           ))}
         </div>
       </Field>
+      {e.kind !== "bodyweight" && <MaxField e={e} onChange={(max) => set({ max })} />}
       <div>
         <div className="mb-1.5 text-sm text-mute">Usual rep goal for a new set</div>
         <AimPicker value={e.aim} onChange={(aim) => set({ aim })} />
@@ -176,6 +177,35 @@ export function ExerciseForm({ value: e, onChange }: { value: Exercise; onChange
         <textarea rows={3} className={cx(input, "h-auto py-3")} value={e.note ?? ""} placeholder="Seat on 4, keep elbows down…" onChange={(x) => set({ note: x.target.value || undefined })} />
       </Field>
     </div>
+  );
+}
+
+/** The machine's top weight. Empty = no limit. At it, next time only offers more reps. */
+function MaxField({ e, onChange }: { e: Exercise; onChange: (max: number | undefined) => void }) {
+  const [text, setText] = useState(e.max ? fmtW(e.max) : "");
+  useEffect(() => setText(e.max ? fmtW(e.max) : ""), [e.id]);
+  return (
+    <Field label={e.kind === "dumbbell" ? "Heaviest dumbbell there, kg" : "Max weight, kg (the top of the machine)"}>
+      <div className="flex gap-2">
+        <input
+          className={input}
+          inputMode="decimal"
+          placeholder="No limit"
+          value={text}
+          onChange={(x) => {
+            setText(x.target.value);
+            const v = parseFloat(x.target.value.replace(",", "."));
+            onChange(v > 0 ? v : undefined);
+          }}
+        />
+        {e.max !== undefined && (
+          <button onClick={() => (setText(""), onChange(undefined))} className={cx(pill, "h-12 shrink-0")}>
+            No limit
+          </button>
+        )}
+      </div>
+      <span className="mt-1.5 block text-sm text-mute">Once you're there, next time suggests more reps instead of more weight.</span>
+    </Field>
   );
 }
 
