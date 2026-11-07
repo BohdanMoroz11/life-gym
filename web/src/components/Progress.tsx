@@ -27,7 +27,7 @@ export function ProgressPage({ db }: { db: DB }) {
         )}
       </p>
 
-      <div className="mt-8 grid gap-8 lg:grid-cols-2">
+      <div className="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-2 [&>*]:min-w-0">
         <section>
           <h2 className="mb-3 font-semibold">When you trained</h2>
           <Calendar db={db} />
