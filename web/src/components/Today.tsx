@@ -104,7 +104,7 @@ function Start({ db, onStart }: { db: DB; onStart: (s: Session) => void }) {
           {/* Phones only: the top bar has this link from sm up. */}
           {!inHub && (
             <a href={HUB_URL} className={cx(pillSm, "sm:hidden")}>
-              All apps
+              Open hub
             </a>
           )}
         </div>

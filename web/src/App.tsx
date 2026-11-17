@@ -35,7 +35,7 @@ export function App() {
           ))}
           {!inHub && (
             <a href={HUB_URL} className="ml-auto rounded-lg px-3 py-1.5 font-medium text-mute hover:text-chalk">
-              All apps
+              Open hub
             </a>
           )}
         </nav>
