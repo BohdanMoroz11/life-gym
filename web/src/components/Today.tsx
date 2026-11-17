@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import type { DB, Light, Mode, Session } from "../../../shared/types.ts";
 import { active, agoLabel, applyMode, COMEBACK_DAYS, daysBetween, done, exMap, fmtSets, fmtTargets, followProgram, isLight, LIGHT_DEFAULT, programOf, relight, sessionLabel, startSession, suggestDay, targetsFor, tips } from "../../../shared/logic.ts";
-import { cx, dayColor, go, markStyle, useDeleteSession, useSaveSession } from "../lib.ts";
+import { cx, dayColor, go, HUB_URL, inHub, markStyle, useDeleteSession, useSaveSession } from "../lib.ts";
 import { FinishSheet, SessionBar, SessionEditor } from "./Session.tsx";
 import { ProgramSheet } from "./Program.tsx";
-import { LightPicker, pill, Segmented } from "./ui.tsx";
+import { LightPicker, pill, pillSm, Segmented } from "./ui.tsx";
 import { TipList } from "./Progress.tsx";
 
 const STALE_MS = 4 * 3_600_000;
@@ -99,7 +99,15 @@ function Start({ db, onStart }: { db: DB; onStart: (s: Session) => void }) {
   return (
     <div className="grid grid-cols-1 gap-8 pt-4 pb-10 lg:grid-cols-[minmax(0,1fr)_22rem] lg:pt-8">
       <div>
-        <p className="text-mute">{today}</p>
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-mute">{today}</p>
+          {/* Phones only: the top bar has this link from sm up. */}
+          {!inHub && (
+            <a href={HUB_URL} className={cx(pillSm, "sm:hidden")}>
+              All apps
+            </a>
+          )}
+        </div>
         <h1 className="num mt-1 text-[clamp(3.5rem,14vw,6.5rem)] leading-[0.9] uppercase">{label}</h1>
         <div className="mt-3 h-2 w-24 rounded-full" style={{ background: color }} />
         <p className="mt-4 text-mute">

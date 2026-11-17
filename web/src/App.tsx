@@ -1,5 +1,5 @@
 import { active } from "../../shared/logic.ts";
-import { cx, dayColor, go, useDB, useRoute } from "./lib.ts";
+import { cx, dayColor, go, HUB_URL, inHub, useDB, useRoute } from "./lib.ts";
 import { TodayPage } from "./components/Today.tsx";
 import { HistoryPage, SessionPage } from "./components/History.tsx";
 import { ProgressPage } from "./components/Progress.tsx";
@@ -33,6 +33,11 @@ export function App() {
               {t.label}
             </a>
           ))}
+          {!inHub && (
+            <a href={HUB_URL} className="ml-auto rounded-lg px-3 py-1.5 font-medium text-mute hover:text-chalk">
+              All apps
+            </a>
+          )}
         </nav>
       </header>
 
